@@ -952,3 +952,39 @@ with col_workspace:
                 st.markdown(f"- **{s['problem_title']}** ({s['difficulty']}) - *{s['category']}* | Earned: `+{s['xp_earned']} XP` | Solved: `{s['solved_at'][:19]}`")
         else:
             st.info("No problems solved yet. Enter the Practice Dojo to conquer your first problem!")
+
+        st.markdown("---")
+        st.markdown("### 💾 Cross-Device Cloud Sync & Save Backup")
+        st.markdown("""
+        <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
+            Playing across multiple computers or web browsers? Export your save file to synchronize your XP, rank, solved problems, and streaks anywhere!
+        </div>
+        """, unsafe_allow_html=True)
+
+        b_col1, b_col2 = st.columns(2)
+        with b_col1:
+            save_json_data = database.export_save_data()
+            st.download_button(
+                label="📥 Download Save Data (JSON)",
+                data=save_json_data,
+                file_name=f"codedojo_backup_{datetime.date.today().isoformat()}.json",
+                mime="application/json",
+                use_container_width=True,
+                help="Exports your level, XP, solved challenges, and unlocked badges as a portable JSON save file.",
+            )
+
+        with b_col2:
+            uploaded_backup = st.file_uploader(
+                "Upload Save Data to Restore:",
+                type=["json"],
+                label_visibility="collapsed",
+            )
+            if uploaded_backup is not None:
+                if st.button("🔄 Restore from Uploaded Save", use_container_width=True):
+                    content = uploaded_backup.read().decode("utf-8")
+                    if database.import_save_data(content):
+                        st.success("Save data restored successfully!")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("Failed to parse save file. Ensure valid CodeDojo JSON backup.")

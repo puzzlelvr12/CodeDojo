@@ -547,3 +547,102 @@ def reset_user_progress():
     """, (today_str,))
     conn.commit()
     conn.close()
+
+
+def export_save_data() -> str:
+    """Exports entire user progress as a JSON string for cloud backup and cross-device sync."""
+    import json
+    init_db()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM user_profile WHERE id = 1")
+    profile_row = dict(cursor.fetchone() or {})
+
+    cursor.execute("SELECT * FROM solved_problems")
+    solved_rows = [dict(r) for r in cursor.fetchall()]
+
+    cursor.execute("SELECT * FROM quiz_history")
+    quiz_rows = [dict(r) for r in cursor.fetchall()]
+
+    cursor.execute("SELECT * FROM achievements")
+    achievement_rows = [dict(r) for r in cursor.fetchall()]
+
+    conn.close()
+
+    payload = {
+        "version": 1,
+        "exported_at": datetime.datetime.now().isoformat(),
+        "profile": profile_row,
+        "solved_problems": solved_rows,
+        "quiz_history": quiz_rows,
+        "achievements": achievement_rows,
+    }
+    return json.dumps(payload, indent=2)
+
+
+def import_save_data(json_str: str) -> bool:
+    """Restores user progress from an exported JSON string."""
+    import json
+    try:
+        data = json.loads(json_str)
+        if "profile" not in data:
+            return False
+
+        init_db()
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # Update profile
+        prof = data["profile"]
+        cursor.execute("""
+        UPDATE user_profile
+        SET xp = ?, level = ?, streak = ?, highest_streak = ?, last_active_date = ?, hints_taken = ?, quizzes_passed = ?
+        WHERE id = 1
+        """, (
+            prof.get("xp", 0),
+            prof.get("level", 1),
+            prof.get("streak", 1),
+            prof.get("highest_streak", 1),
+            prof.get("last_active_date", datetime.date.today().isoformat()),
+            prof.get("hints_taken", 0),
+            prof.get("quizzes_passed", 0),
+        ))
+
+        # Restore solved problems
+        if "solved_problems" in data:
+            for s in data["solved_problems"]:
+                cursor.execute("""
+                INSERT OR REPLACE INTO solved_problems (problem_id, problem_title, difficulty, category, solved_at, xp_earned, attempts, hints_used, best_code)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    s["problem_id"], s["problem_title"], s["difficulty"], s["category"],
+                    s["solved_at"], s["xp_earned"], s.get("attempts", 1), s.get("hints_used", 0), s.get("best_code", "")
+                ))
+
+        # Restore quiz history
+        if "quiz_history" in data:
+            for q in data["quiz_history"]:
+                cursor.execute("""
+                INSERT OR REPLACE INTO quiz_history (id, problem_id, problem_title, difficulty, time_limit_sec, time_taken_sec, passed, xp_change, completed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    q.get("id"), q["problem_id"], q["problem_title"], q["difficulty"],
+                    q["time_limit_sec"], q["time_taken_sec"], q["passed"], q["xp_change"], q["completed_at"]
+                ))
+
+        # Restore achievements
+        if "achievements" in data:
+            for a in data["achievements"]:
+                cursor.execute("""
+                INSERT OR REPLACE INTO achievements (achievement_id, name, description, icon, unlocked_at)
+                VALUES (?, ?, ?, ?, ?)
+                """, (
+                    a["achievement_id"], a["name"], a["description"], a["icon"], a["unlocked_at"]
+                ))
+
+        conn.commit()
+        conn.close()
+        return True
+    except Exception:
+        return False

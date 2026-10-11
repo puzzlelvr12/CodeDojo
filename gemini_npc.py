@@ -29,9 +29,17 @@ Strict Hint Guidelines based on requested mode:
 
 def get_gemini_client(api_key: Optional[str] = None):
     """
-    Creates a Google GenAI client using the provided key, environment variable, or secrets.
+    Creates a Google GenAI client using the provided key, environment variable, or Streamlit secrets.
     """
     effective_key = api_key or os.environ.get("GEMINI_API_KEY")
+    if not effective_key:
+        try:
+            import streamlit as st
+            if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
+                effective_key = st.secrets["GEMINI_API_KEY"]
+        except Exception:
+            pass
+
     if not effective_key:
         return None
     try:
